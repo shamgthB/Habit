@@ -1,0 +1,6 @@
+{
+  "name": "AuraHabit - Daily Habit & Life Tracker",
+  "description": "A premium daily habit tracker with AI-driven smart notifications (Push & Gmail alerts), custom habit schedules, streaks, analytics, routines, focus timer, mood tracking, life score, and Google Workspace integration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
