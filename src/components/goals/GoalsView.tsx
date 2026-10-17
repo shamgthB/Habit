@@ -15,9 +15,10 @@ import {
 import { Goal, GoalType } from '../../types';
 import { getDaysAgo, formatHumanDate } from '../../utils/dateUtils';
 import { ConfirmModal } from '../common/ConfirmModal';
+import { SmartGoalAssistant } from './SmartGoalAssistant';
 
 export const GoalsView: React.FC = () => {
-  const { goals, habits, addGoal, updateGoal, deleteGoal } = useApp();
+  const { goals, habits, logs, data, addGoal, updateGoal, deleteGoal } = useApp();
 
   const [filterType, setFilterType] = useState<string>('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -39,14 +40,21 @@ export const GoalsView: React.FC = () => {
     return g.type === filterType;
   });
 
-  const openAddModal = () => {
+  const openAddModal = (prefill?: {
+    title?: string;
+    description?: string;
+    type?: GoalType;
+    targetCount?: number;
+    deadline?: string;
+    relatedHabitIds?: string[];
+  }) => {
     setEditingGoal(null);
-    setTitle('');
-    setDescription('');
-    setType('30_day');
-    setTargetCount(30);
-    setDeadline(getDaysAgo(-30));
-    setRelatedHabitIds(habits.slice(0, 1).map((h) => h.id));
+    setTitle(prefill?.title || '');
+    setDescription(prefill?.description || '');
+    setType(prefill?.type || '30_day');
+    setTargetCount(prefill?.targetCount || 30);
+    setDeadline(prefill?.deadline || getDaysAgo(-30));
+    setRelatedHabitIds(prefill?.relatedHabitIds || habits.slice(0, 1).map((h) => h.id));
     setIsModalOpen(true);
   };
 
@@ -101,13 +109,23 @@ export const GoalsView: React.FC = () => {
         </div>
 
         <button
-          onClick={openAddModal}
+          onClick={() => openAddModal()}
           className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-md shadow-emerald-600/20 transition-all cursor-pointer self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
           <span>New Goal</span>
         </button>
       </div>
+
+      {/* AI-Powered Smart Goal Assistant */}
+      <SmartGoalAssistant
+        habits={habits}
+        logs={logs}
+        goals={goals}
+        userName={data.profile?.name || 'Habit Builder'}
+        onAdoptGoal={addGoal}
+        onCustomizeGoal={openAddModal}
+      />
 
       {/* Filter Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">

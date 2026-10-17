@@ -28,13 +28,16 @@ import { getGreeting, formatHumanDate, getPastDaysArray, getTodayDateString } fr
 import { DynamicIcon, CATEGORY_COLORS } from '../common/Icons';
 import { calculateHabitStreak } from '../../utils/calculations';
 import { MoodType } from '../../types';
-import { DailyAffirmationCard } from './DailyAffirmationCard';
+import { Affirmations } from './Affirmations';
 import { DailyGoalProgress } from './DailyGoalProgress';
 import { DailyJournal } from './DailyJournal';
 import { AiHabitInsights } from './AiHabitInsights';
+import { Affirmation } from '../../services/affirmationService';
+import { WeeklyHabitHeatMap } from './WeeklyHabitHeatMap';
 
 export const DashboardView: React.FC = () => {
   const {
+    habits,
     profile,
     selectedDate,
     setSelectedDate,
@@ -63,7 +66,9 @@ export const DashboardView: React.FC = () => {
   const isToday = selectedDate === getTodayDateString();
   const { greeting, icon: greetingIcon } = getGreeting();
 
-  // Motivational Quotes
+  const [morningAffirmation, setMorningAffirmation] = useState<Affirmation | null>(null);
+
+  // Motivational Quotes fallback bank
   const quotes = [
     { text: 'We are what we repeatedly do. Excellence, then, is not an act, but a habit.', author: 'Will Durant' },
     { text: 'Small daily improvements over time lead to stunning results.', author: 'Robin Sharma' },
@@ -120,8 +125,16 @@ export const DashboardView: React.FC = () => {
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1.5">
             Welcome back, {profile.name}
           </h1>
-          <p className="text-[13px] sm:text-[14px] text-slate-600 dark:text-white/60 mt-1 max-w-xl italic">
-            &ldquo;{todayQuote.text}&rdquo; <span className="font-semibold not-italic">— {todayQuote.author}</span>
+          <p className="text-[13px] sm:text-[14px] text-slate-600 dark:text-white/60 mt-1 max-w-xl italic flex items-center gap-1.5 flex-wrap">
+            <span>&ldquo;{morningAffirmation?.quote || todayQuote.text}&rdquo;</span>
+            <span className="font-semibold not-italic text-[#30D158]">
+              — {morningAffirmation?.author || todayQuote.author}
+            </span>
+            {morningAffirmation?.isAiGenerated && (
+              <span className="px-2 py-0.5 rounded-full bg-[#30D158]/15 text-[#30D158] text-[10px] font-mono not-italic font-bold">
+                AI Morning Boost
+              </span>
+            )}
           </p>
         </div>
 
@@ -440,51 +453,13 @@ export const DashboardView: React.FC = () => {
             </div>
           </div>
 
-          {/* Weekly Progress Summary Mini Chart with iOS Pills */}
-          <div className="p-5 sm:p-6 rounded-[24px] bg-white/75 dark:bg-[#141722]/75 backdrop-blur-2xl border border-slate-200/80 dark:border-white/[0.08] shadow-[0_8px_32px_rgba(0,0,0,0.06)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.32)]">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-white/[0.06]">
-              <h3 className="text-[16px] font-bold text-slate-900 dark:text-white">
-                Weekly Completion Trajectory
-              </h3>
-              <button
-                onClick={() => setCurrentSection('analytics')}
-                className="text-[12px] font-bold text-[#30D158] hover:underline cursor-pointer"
-              >
-                Deep Analytics →
-              </button>
-            </div>
-
-            <div className="mt-5 grid grid-cols-7 gap-2 text-center">
-              {weeklyMiniData.map((day, idx) => {
-                const dayDate = new Date(day.date);
-                const dayName = dayDate.toLocaleDateString('en-US', { weekday: 'short' });
-                const isSelected = day.date === selectedDate;
-
-                return (
-                  <button
-                    key={idx}
-                    onClick={() => setSelectedDate(day.date)}
-                    className={`p-3 rounded-[18px] flex flex-col items-center gap-2 transition-all cursor-pointer ${
-                      isSelected
-                        ? 'bg-[#30D158]/15 border border-[#30D158]/40 font-bold scale-[1.03]'
-                        : 'bg-slate-100/70 dark:bg-white/[0.04] hover:bg-slate-200/70 dark:hover:bg-white/[0.08] border border-transparent dark:border-white/[0.04]'
-                    }`}
-                  >
-                    <span className="text-[11px] font-semibold text-slate-400 dark:text-white/50">{dayName}</span>
-                    <div className="w-full h-16 bg-slate-200 dark:bg-white/[0.08] rounded-full flex flex-col justify-end p-0.5 overflow-hidden">
-                      <div
-                        className="w-full bg-gradient-to-t from-[#28B54C] to-[#30D158] rounded-full transition-all duration-500"
-                        style={{ height: `${day.pct}%` }}
-                      />
-                    </div>
-                    <span className="text-[11px] font-mono font-bold text-slate-700 dark:text-white/80">
-                      {day.pct}%
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {/* Weekly Habit Completion Heat Map with Recharts & Peak Performance Analysis */}
+          <WeeklyHabitHeatMap
+            habits={habits}
+            logs={logs}
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+          />
 
           {/* AI Habit Insights Widget */}
           <AiHabitInsights />
@@ -495,8 +470,8 @@ export const DashboardView: React.FC = () => {
           {/* Daily Goal Progress Percentage Ring Widget */}
           <DailyGoalProgress />
 
-          {/* Daily Affirmation Widget */}
-          <DailyAffirmationCard />
+          {/* Affirmations Component with Daily Quote and Liked List */}
+          <Affirmations onAffirmationChange={setMorningAffirmation} />
 
           {/* Daily Journal Component */}
           <DailyJournal />

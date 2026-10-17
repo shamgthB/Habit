@@ -8,7 +8,31 @@ export interface Affirmation {
   date?: string;
   isAiGenerated?: boolean;
   model?: string;
+  moraleGoal?: string;
+  userName?: string;
 }
+
+export interface AffirmationRequestOptions {
+  category?: string;
+  mood?: string;
+  userName?: string;
+  streak?: number;
+  topHabits?: string[];
+  moraleGoal?: string;
+  timeOfDay?: string;
+  forceRefresh?: boolean;
+}
+
+export const MORALE_VIBES = [
+  { id: 'morning_momentum', label: 'Morning Momentum', emoji: '🌅', desc: 'Kickstart morning action with enthusiasm' },
+  { id: 'beat_resistance', label: 'Beat Resistance', emoji: '⚡', desc: 'Break through hesitation and start effortlessly' },
+  { id: 'calm_presence', label: 'Calm & Presence', emoji: '🧘', desc: 'Ground the mind with serene mindfulness' },
+  { id: 'deep_focus', label: 'Deep Focus', emoji: '🎯', desc: 'Sharpen clarity and eliminate distractions' },
+  { id: 'resilience_grit', label: 'Grit & Courage', emoji: '🛡️', desc: 'Strengthen inner fortitude to conquer hard things' },
+  { id: 'gratitude_joy', label: 'Gratitude & Joy', emoji: '💖', desc: 'Celebrate small wins and radiate positivity' },
+] as const;
+
+export type MoraleVibe = typeof MORALE_VIBES[number];
 
 const STORAGE_KEY_PREFIX = 'aura_affirmation_';
 const FAVORITES_KEY = 'aura_favorite_affirmations';
@@ -72,11 +96,9 @@ const FALLBACK_BANK: Affirmation[] = [
 /**
  * Fetch or retrieve cached daily affirmation
  */
-export async function getDailyAffirmation(options?: {
-  category?: string;
-  mood?: string;
-  forceRefresh?: boolean;
-}): Promise<Affirmation> {
+export async function getDailyAffirmation(
+  options?: AffirmationRequestOptions
+): Promise<Affirmation> {
   const today = getTodayDateString();
   const cacheKey = `${STORAGE_KEY_PREFIX}${today}`;
 
@@ -101,6 +123,11 @@ export async function getDailyAffirmation(options?: {
       body: JSON.stringify({
         category: options?.category || 'Consistency & Habits',
         mood: options?.mood || 'focused',
+        userName: options?.userName || 'User',
+        streak: options?.streak ?? 0,
+        topHabits: options?.topHabits || [],
+        moraleGoal: options?.moraleGoal || 'Morning Momentum',
+        timeOfDay: options?.timeOfDay || 'morning',
       }),
     });
 
@@ -115,6 +142,8 @@ export async function getDailyAffirmation(options?: {
           date: today,
           isAiGenerated: data.isAiGenerated !== false,
           model: data.model || 'Gemini 3.8 Flash',
+          moraleGoal: options?.moraleGoal,
+          userName: options?.userName,
         };
 
         // Cache for today
@@ -148,46 +177,114 @@ export async function getDailyAffirmation(options?: {
   return fallback;
 }
 
+export interface LikedAffirmation extends Affirmation {
+  id: string;
+  likedAt: string;
+  notes?: string;
+}
+
+const LIKED_STORAGE_KEY = 'aura_liked_affirmations';
+
 /**
- * Retrieve saved favorite affirmations
+ * Retrieve saved / liked affirmations from local storage
  */
-export function getSavedAffirmations(): Affirmation[] {
+export function getLikedAffirmations(): LikedAffirmation[] {
   try {
-    const raw = localStorage.getItem(FAVORITES_KEY);
-    return raw ? JSON.parse(raw) : [];
+    const raw = localStorage.getItem(LIKED_STORAGE_KEY) || localStorage.getItem(FAVORITES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item: any, idx: number) => ({
+      ...item,
+      id: item.id || `liked-${idx}-${item.quote?.slice(0, 15).replace(/\s+/g, '-')}`,
+      likedAt: item.likedAt || item.date || getTodayDateString(),
+    }));
   } catch {
     return [];
   }
 }
 
 /**
- * Toggle saving an affirmation to favorites
+ * Toggle liking / saving an affirmation in local storage
  */
-export function toggleSaveAffirmation(affirmation: Affirmation): boolean {
+export function toggleLikeAffirmation(affirmation: Affirmation): boolean {
   try {
-    const list = getSavedAffirmations();
-    const exists = list.some((a) => a.quote === affirmation.quote);
-    let updated: Affirmation[];
-    if (exists) {
-      updated = list.filter((a) => a.quote !== affirmation.quote);
+    const current = getLikedAffirmations();
+    const existingIndex = current.findIndex(
+      (a) => a.quote.trim().toLowerCase() === affirmation.quote.trim().toLowerCase()
+    );
+
+    let updated: LikedAffirmation[];
+    let isNowLiked = false;
+
+    if (existingIndex >= 0) {
+      updated = current.filter((_, idx) => idx !== existingIndex);
+      isNowLiked = false;
     } else {
-      updated = [affirmation, ...list];
+      const newLiked: LikedAffirmation = {
+        ...affirmation,
+        id: `liked-${Date.now()}`,
+        likedAt: new Date().toISOString(),
+      };
+      updated = [newLiked, ...current];
+      isNowLiked = true;
     }
+
+    localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(updated));
     localStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
-    return !exists;
+
+    // Dispatch event for instant reactive updates across components
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('aura_liked_affirmations_updated', { detail: updated }));
+    }
+
+    return isNowLiked;
+  } catch (err) {
+    console.error('Error toggling liked affirmation in local storage:', err);
+    return false;
+  }
+}
+
+/**
+ * Check if a quote is currently in the local storage liked list
+ */
+export function isAffirmationLiked(quote: string): boolean {
+  if (!quote) return false;
+  try {
+    const current = getLikedAffirmations();
+    return current.some(
+      (a) => a.quote.trim().toLowerCase() === quote.trim().toLowerCase()
+    );
   } catch {
     return false;
   }
 }
 
 /**
- * Check if quote is saved
+ * Remove an affirmation from the liked list by quote or ID
  */
-export function isAffirmationSaved(quote: string): boolean {
+export function removeLikedAffirmation(identifier: string): LikedAffirmation[] {
   try {
-    const list = getSavedAffirmations();
-    return list.some((a) => a.quote === quote);
-  } catch {
-    return false;
+    const current = getLikedAffirmations();
+    const updated = current.filter(
+      (a) => a.id !== identifier && a.quote.trim().toLowerCase() !== identifier.trim().toLowerCase()
+    );
+    localStorage.setItem(LIKED_STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('aura_liked_affirmations_updated', { detail: updated }));
+    }
+    return updated;
+  } catch (err) {
+    console.error('Error removing liked affirmation from local storage:', err);
+    return getLikedAffirmations();
   }
 }
+
+/**
+ * Backwards compatibility aliases
+ */
+export const getSavedAffirmations = getLikedAffirmations;
+export const toggleSaveAffirmation = toggleLikeAffirmation;
+export const isAffirmationSaved = isAffirmationLiked;

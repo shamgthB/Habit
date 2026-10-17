@@ -35,11 +35,32 @@ async function startServer() {
   // Affirmation API endpoint powered by Gemini API
   app.post('/api/affirmation', async (req: Request, res: Response) => {
     try {
-      const { category = 'Consistency & Habits', mood = 'focused' } = req.body || {};
+      const {
+        category = 'Consistency & Habits',
+        mood = 'focused',
+        userName = 'User',
+        streak = 0,
+        topHabits = [],
+        moraleGoal = 'Morning Momentum',
+        timeOfDay = 'morning',
+      } = req.body || {};
 
-      const prompt = `You are a mindful and inspiring life coach for AuraHabit. Generate an uplifting, poignant daily affirmation and motivational quote tailored for personal growth, habit tracking, and mindfulness.
-Focus Category: ${category}
-User Mood / Energy: ${mood}
+      const prompt = `You are an inspiring, empathetic mentor and life coach for AuraHabit. Generate a personalized, uplifting daily affirmation and motivational quote to boost user morale each morning.
+
+User Context:
+- User Name: ${userName}
+- Time of Day: ${timeOfDay}
+- Habit Streak: ${streak} days
+- Active Habits: ${Array.isArray(topHabits) && topHabits.length > 0 ? topHabits.slice(0, 3).join(', ') : 'Daily Consistency & Mindful Growth'}
+- Desired Morale Focus: ${moraleGoal}
+- Category: ${category}
+- Current Mood: ${mood}
+
+Instructions:
+1. Provide a powerful, poignant 1-2 sentence daily affirmation or motivational quote that energizes the user and boosts their morale for the day ahead.
+2. Provide the name of an inspiring thinker, author, philosopher, athlete, or 'Aura Wisdom'.
+3. Include a theme tag (e.g. Consistency, Resilience, Focus, Mindfulness, Courage, Vitality).
+4. Include a single brief reflective question (max 15 words) to ponder today.
 
 Return a valid JSON object matching this exact structure:
 {
@@ -286,6 +307,137 @@ Return a valid JSON object matching this schema:
           isAiGenerated: false,
           generatedAt: new Date().toISOString(),
         },
+      });
+    }
+  });
+
+  // AI-Powered Smart Goal Assistant endpoint powered by Gemini API (gemini-3.8-flash)
+  app.post('/api/smart-goals', async (req: Request, res: Response) => {
+    try {
+      const {
+        userName = 'Habit Builder',
+        habits = [],
+        anchorHabit = null,
+        laggingHabit = null,
+        overallConsistency = 70,
+        activeGoals = [],
+        strategy = 'all',
+      } = req.body || {};
+
+      const prompt = `You are a world-renowned behavioral scientist, goal-setting strategist, and habit architect (combining Locke & Latham's Goal Setting Theory, James Clear's Atomic Habits, and BJ Fogg's Tiny Habits).
+
+Analyze the user's historical habit performance and existing goals to formulate 3-4 highly personalized, SMART (Specific, Measurable, Achievable, Relevant, Time-Bound) new objectives:
+
+User: ${userName}
+Overall Consistency (Last 30 Days): ${overallConsistency}%
+Total Active Habits: ${habits.length}
+Anchor Habit (Highest Reliability): ${anchorHabit ? `${anchorHabit.name} (${anchorHabit.streak}d streak, ${anchorHabit.completionRate30d}% rate)` : 'None'}
+Growth Vector Habit (Needs Support): ${laggingHabit ? `${laggingHabit.name} (${laggingHabit.completionRate30d}% rate)` : 'None'}
+Requested Strategy: ${strategy}
+
+Habit Performance Breakdown (Top active habits):
+${JSON.stringify(habits.slice(0, 8), null, 2)}
+
+Active Goals Already Set (Do NOT duplicate these, propose complementary next milestones):
+${JSON.stringify(activeGoals, null, 2)}
+
+Goal Design Rules:
+1. Every suggested goal MUST anchor directly to one or more of the user's real habits listed above (use exact 'id' from habits array in relatedHabitIds).
+2. Categorize goals into progressive tiers:
+   - "Starter Win": Lower activation energy, 7-14 check-ins, builds immediate momentum.
+   - "Momentum Builder": 21-30 check-ins over 30 days, builds identity shift and weekend consistency.
+   - "Mastery Challenge": 30-60+ check-ins or streak locks for high-performing anchor habits.
+   - "Habit Stacking": Explicitly pairs a lagging habit directly after the anchor habit.
+3. Keep titles punchy and inspiring (e.g. "21-Day Deep Work Flow Mastery", "Morning Hydration 30-Day Lock", "Evening Wind-Down Sprint").
+4. Descriptions should provide clear behavioral context and rationale.
+5. Provide a sharp behavioral diagnostic analyzing their habits.
+
+Return a valid JSON object matching this exact schema:
+{
+  "diagnostic": {
+    "anchorHabit": "Name of top habit and why it is an anchor",
+    "growthVector": "Name of developing habit and primary friction point",
+    "coachingRationale": "2 sentences explaining the overarching behavioral strategy tailored to their velocity",
+    "overallConsistency": ${overallConsistency}
+  },
+  "suggestions": [
+    {
+      "id": "sugg-1",
+      "title": "Punchy inspiring title",
+      "description": "Concrete explanation and behavioral strategy",
+      "type": "7_day" | "30_day" | "90_day" | "yearly",
+      "targetCount": 21,
+      "deadlineDays": 25,
+      "relatedHabitIds": ["habit-id-from-habits-array"],
+      "category": "Health" | "Career" | "Mindfulness" | "Finance" | "Personal",
+      "tier": "Starter Win" | "Momentum Builder" | "Mastery Challenge" | "Habit Stacking",
+      "difficulty": "Easy" | "Moderate" | "Ambitious",
+      "estimatedXp": 100,
+      "rationale": "Why this specific objective fits their exact historical data"
+    }
+  ]
+}`;
+
+      let response: any = null;
+      let usedModel = 'gemini-3.8-flash';
+
+      try {
+        response = await Promise.race([
+          ai.models.generateContent({
+            model: 'gemini-3.8-flash',
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+              temperature: 0.7,
+            },
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 6000)),
+        ]);
+      } catch (err: any) {
+        console.warn('Gemini 3.8 flash unavailable for smart goals, trying gemini-3.1-flash-lite:', err?.message || err);
+        try {
+          usedModel = 'gemini-3.1-flash-lite';
+          response = await Promise.race([
+            ai.models.generateContent({
+              model: 'gemini-3.1-flash-lite',
+              contents: prompt,
+              config: {
+                responseMimeType: 'application/json',
+                temperature: 0.7,
+              },
+            }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 6000)),
+          ]);
+        } catch (liteErr: any) {
+          console.warn('Gemini lite unavailable, falling back to heuristic engine:', liteErr?.message || liteErr);
+        }
+      }
+
+      if (response && response.text) {
+        let text = response.text.trim();
+        text = text.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+        const parsed = JSON.parse(text);
+        if (parsed.suggestions && Array.isArray(parsed.suggestions)) {
+          return res.json({
+            success: true,
+            diagnostic: parsed.diagnostic,
+            suggestions: parsed.suggestions,
+            model: usedModel,
+            isAiGenerated: true,
+          });
+        }
+      }
+
+      // If AI model output wasn't cleanly parsed, let frontend fallback run
+      return res.status(200).json({
+        success: false,
+        message: 'Proceeding with behavioral fallback',
+      });
+    } catch (error: any) {
+      console.error('Smart goals endpoint error:', error);
+      return res.status(200).json({
+        success: false,
+        error: error?.message || 'Smart goals error',
       });
     }
   });
